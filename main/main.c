@@ -133,7 +133,7 @@ esp_err_t get_handler(httpd_req_t *req) {
     }
 
     char *p = response;
-
+    
     // Check if it's an AJAX request
     char *header = NULL;
     size_t header_len = httpd_req_get_hdr_value_len(req, "X-Requested-With");
@@ -151,9 +151,9 @@ esp_err_t get_handler(httpd_req_t *req) {
                     p += sprintf(p, ", Status: %s</li>", stored_messages[i].status);
                 }
                 p += sprintf(p, "</ul>");
+                free(header);
                 httpd_resp_send(req, response, strlen(response));
                 free(response);
-                free(header);
                 return ESP_OK;
             }
         }
@@ -170,10 +170,10 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "1. Con el motor encendido, ponga el volante/ruedas en el centro.<br>");
     p += sprintf(p, "2. Gire el volante a la izquierda hasta el tope.<br>");
     p += sprintf(p, "3. Gire el volante a la derecha hasta el tope.<br>");
-    p += sprintf(p, "4. Vuelva a centrar el volante/ruedas y espere a que finalice la cuenta atrás.<br>");
+    p += sprintf(p, "4. Vuelva a centrar el volante/ruedas y espere a que finalice la cuenta atras.<br>");
     p += sprintf(p, "5. Una vez finalizada este proceso, apague el coche y vuelva a encenderlo<br>");
     p += sprintf(p, "</div>");
-    p += sprintf(p, "<h2>Filtered 0x762 Messages (byte0=0x23, byte1=0x00)</h2><ul id='messageList'>");
+    p += sprintf(p, "<h2>Filtered 0x762 Messages (byte0=0x23, byte1=0x00)</h2><div id='messageListContainer'><ul id='messageList'>");
 
     for (int i = 0; i < stored_message_count; i++) {
         p += sprintf(p, "<li>ID: 0x762, Data: ");
@@ -183,27 +183,36 @@ esp_err_t get_handler(httpd_req_t *req) {
         p += sprintf(p, ", Status: %s</li>", stored_messages[i].status);
     }
 
-    p += sprintf(p, "</ul>");
+    p += sprintf(p, "</ul></div>");
     p += sprintf(p, "<script>");
     p += sprintf(p, "var countdown = 30;");
     p += sprintf(p, "var countdownActive = false;");
+    p += sprintf(p, "var countdownInterval;");
     p += sprintf(p, "function startCountdown() {");
     p += sprintf(p, "  if (!countdownActive) {");
     p += sprintf(p, "    countdownActive = true;");
     p += sprintf(p, "    countdown = 30;");
     p += sprintf(p, "    document.getElementById('instructions').style.display = 'block';");
     p += sprintf(p, "    updateButton();");
-    p += sprintf(p, "    fetch('/start_countdown', { method: 'POST' });");
-    p += sprintf(p, "    var timer = setInterval(function() {");
-    p += sprintf(p, "      countdown--;");
-    p += sprintf(p, "      updateButton();");
-    p += sprintf(p, "      if (countdown <= 0) {");
-    p += sprintf(p, "        clearInterval(timer);");
-    p += sprintf(p, "        countdownActive = false;");
-    p += sprintf(p, "        fetch('/calibrate', { method: 'POST' });");
-    p += sprintf(p, "        setTimeout(() => location.reload(), 1000);");
-    p += sprintf(p, "      }");
-    p += sprintf(p, "    }, 1000);");
+    p += sprintf(p, "    fetch('/start_countdown', { method: 'POST' })");
+    p += sprintf(p, "      .then(response => response.text())");
+    p += sprintf(p, "      .then(data => {");
+    p += sprintf(p, "        console.log(data);");
+    p += sprintf(p, "        countdownInterval = setInterval(function() {");
+    p += sprintf(p, "          countdown--;");
+    p += sprintf(p, "          updateButton();");
+    p += sprintf(p, "          if (countdown <= 0) {");
+    p += sprintf(p, "            clearInterval(countdownInterval);");
+    p += sprintf(p, "            countdownActive = false;");
+    p += sprintf(p, "            fetch('/calibrate', { method: 'POST' })");
+    p += sprintf(p, "              .then(response => response.text())");
+    p += sprintf(p, "              .then(data => {");
+    p += sprintf(p, "                console.log(data);");
+    p += sprintf(p, "                document.getElementById('status').innerHTML = '<p>Calibration complete</p>';");
+    p += sprintf(p, "              });");
+    p += sprintf(p, "          }");
+    p += sprintf(p, "        }, 1000);");
+    p += sprintf(p, "      });");
     p += sprintf(p, "  }");
     p += sprintf(p, "}");
     p += sprintf(p, "function updateButton() {");
@@ -220,11 +229,18 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "  fetch('/status_check', { method: 'POST' })");
     p += sprintf(p, "    .then(response => response.text())");
     p += sprintf(p, "    .then(data => {");
+    p += sprintf(p, "      console.log(data);");
     p += sprintf(p, "      document.getElementById('status').innerHTML = '<p>Status check messages sent</p>';");
-    p += sprintf(p, "      setTimeout(() => location.reload(), 1000);");
     p += sprintf(p, "    });");
     p += sprintf(p, "}");
-    p += sprintf(p, "setInterval(() => location.reload(), 5000);");
+    p += sprintf(p, "function updateMessages() {");
+    p += sprintf(p, "  fetch('/', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })");
+    p += sprintf(p, "    .then(response => response.text())");
+    p += sprintf(p, "    .then(html => {");
+    p += sprintf(p, "      document.getElementById('messageListContainer').innerHTML = html;");
+    p += sprintf(p, "    });");
+    p += sprintf(p, "}");
+    p += sprintf(p, "setInterval(updateMessages, 5000);");
     p += sprintf(p, "</script>");
     p += sprintf(p, "</body></html>");
 
