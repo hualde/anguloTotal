@@ -21,6 +21,11 @@
 
 #define MAX_STORED_MESSAGES 20
 
+#define TWAI_TX_TASK_PRIO 9
+#define TWAI_RX_TASK_PRIO 8
+#define EXAMPLE_DELAY_BETWEEN_MSGS_MS 100
+#define MAX_RETRIES 3
+
 static const char *TAG = "TWAI_APP";
 
 QueueHandle_t message_queue;
@@ -56,9 +61,46 @@ static bool timer_created = false;
 
 void send_twai_messages(twai_message_t* messages, int count) {
     for (int i = 0; i < count; i++) {
-        ESP_ERROR_CHECK(twai_transmit(&messages[i], pdMS_TO_TICKS(1000)));
-        ESP_LOGI(TAG, "Message sent: ID=0x%03" PRIx32 ", DLC=%d", messages[i].identifier, messages[i].data_length_code);
-        vTaskDelay(pdMS_TO_TICKS(100));
+        int retries = 0;
+        esp_err_t result;
+        do {
+            result = twai_transmit(&messages[i], pdMS_TO_TICKS(1000));
+            if (result == ESP_OK) {
+                ESP_LOGI(TAG, "Message %d successfully sent: ID=0x%03" PRIx32 ", DLC=%d", i + 1, messages[i].identifier, messages[i].data_length_code);
+                break;
+            } else {
+                ESP_LOGE(TAG, "Failed to send message %d, error: %s. Retry %d", i + 1, esp_err_to_name(result), retries + 1);
+                retries++;
+                
+                twai_status_info_t status;
+                twai_get_status_info(&status);
+                ESP_LOGI(TAG, "TWAI status: state=%lu, msgs_to_tx=%lu, msgs_to_rx=%lu, tx_error_counter=%lu, rx_error_counter=%lu",
+                         (unsigned long)status.state, (unsigned long)status.msgs_to_tx, (unsigned long)status.msgs_to_rx,
+                         (unsigned long)status.tx_error_counter, (unsigned long)status.rx_error_counter);
+
+                if (status.state == TWAI_STATE_BUS_OFF) {
+                    ESP_LOGI(TAG, "Bus off, initiating recovery");
+                    twai_initiate_recovery();
+                    vTaskDelay(pdMS_TO_TICKS(5000));  // Wait for recovery
+                } else if (status.state == TWAI_STATE_STOPPED) {
+                    ESP_LOGI(TAG, "TWAI stopped, restarting");
+                    twai_start();
+                    vTaskDelay(pdMS_TO_TICKS(1000));
+                } else {
+                    // Try to recover from error state
+                    twai_stop();
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                    twai_start();
+                    ESP_LOGI(TAG, "TWAI restarted after error");
+                }
+            }
+        } while (retries < MAX_RETRIES);
+
+        if (retries == MAX_RETRIES) {
+            ESP_LOGE(TAG, "Failed to send message %d after %d retries", i + 1, MAX_RETRIES);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(EXAMPLE_DELAY_BETWEEN_MSGS_MS));
     }
 }
 
@@ -66,7 +108,8 @@ void twai_receive_task(void *pvParameters) {
     twai_message_t rx_message;
     message_with_status_t message_with_status;
     while (1) {
-        if (twai_receive(&rx_message, pdMS_TO_TICKS(1000)) == ESP_OK) {
+        esp_err_t result = twai_receive(&rx_message, pdMS_TO_TICKS(10000));
+        if (result == ESP_OK) {
             if (rx_message.identifier == 0x762 && rx_message.data[0] == 0x23 && rx_message.data[1] == 0x00) {
                 message_with_status.message = rx_message;
                 message_with_status.status = ((rx_message.data[3] & 0x0F) == 0x0C) ? "Status 4" : "Status 3";
@@ -85,6 +128,24 @@ void twai_receive_task(void *pvParameters) {
                     }
                     stored_messages[MAX_STORED_MESSAGES - 1] = message_with_status;
                 }
+            }
+        } else if (result != ESP_ERR_TIMEOUT) {
+            ESP_LOGE(TAG, "Failed to receive message, error: %s", esp_err_to_name(result));
+            
+            twai_status_info_t status;
+            twai_get_status_info(&status);
+            ESP_LOGI(TAG, "TWAI status: state=%lu, msgs_to_tx=%lu, msgs_to_rx=%lu, tx_error_counter=%lu, rx_error_counter=%lu",
+                     (unsigned long)status.state, (unsigned long)status.msgs_to_tx, (unsigned long)status.msgs_to_rx,
+                     (unsigned long)status.tx_error_counter, (unsigned long)status.rx_error_counter);
+
+            if (status.state == TWAI_STATE_BUS_OFF) {
+                ESP_LOGI(TAG, "Bus off, initiating recovery");
+                twai_initiate_recovery();
+                vTaskDelay(pdMS_TO_TICKS(5000));  // Wait for recovery
+            } else if (status.state == TWAI_STATE_STOPPED) {
+                ESP_LOGI(TAG, "TWAI stopped, restarting");
+                twai_start();
+                vTaskDelay(pdMS_TO_TICKS(1000));
             }
         }
     }
@@ -161,16 +222,29 @@ esp_err_t get_handler(httpd_req_t *req) {
     }
 
     // If it's not an AJAX request, send the full HTML page
-    p += sprintf(p, "<html><body>");
+    p += sprintf(p, "<!DOCTYPE html>");
+    p += sprintf(p, "<html lang='es'><head><meta charset='UTF-8'><style>");
+    p += sprintf(p, "body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }");
+    p += sprintf(p, ".button { background-color: #E4007B; border: none; color: white; padding: 15px 32px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 4px 2px; cursor: pointer; }");
+    p += sprintf(p, ".status { margin-left: 20px; display: inline-block; }");
+    p += sprintf(p, "#countdownBtn { display: block; margin: 20px 0; }");
+    p += sprintf(p, "#instructions { margin-top: 10px; }");
+    p += sprintf(p, ".calibration-complete { background-color: #4CAF50; padding: 10px; border-radius: 5px; display: inline-block; margin-left: 20px; color: white; }");
+    p += sprintf(p, "</style></head><body>");
     p += sprintf(p, "<h1>ESP32-C3 CAN Control Panel</h1>");
-    p += sprintf(p, "<button id='countdownBtn' onclick='startCountdown()'>Start Countdown</button>");
-    p += sprintf(p, "<button onclick='sendStatusCheck()'>Comprobar estado de la configuracion de angulo de volante</button>");
-    p += sprintf(p, "<div id='status'></div>");
+    p += sprintf(p, "<div>");
+    p += sprintf(p, "<button class='button' onclick='sendStatusCheck()'>Comprobar estado de la configuración de ángulo de volante</button>");
+    p += sprintf(p, "</div>");
+    p += sprintf(p, "<br><br>");
+    p += sprintf(p, "<div style=\"display: flex; align-items: center;\">");
+    p += sprintf(p, "<button id='countdownBtn' class='button' onclick='startCountdown()'>Calibrar ángulo de volante</button>"); 
+    p += sprintf(p, "<span id='calibrationStatus' class='status calibration-complete' style='display: none;'></span>");
+    p += sprintf(p, "</div>");
     p += sprintf(p, "<div id='instructions' style='display:none;'>");
     p += sprintf(p, "1. Con el motor encendido, ponga el volante/ruedas en el centro.<br>");
     p += sprintf(p, "2. Gire el volante a la izquierda hasta el tope.<br>");
     p += sprintf(p, "3. Gire el volante a la derecha hasta el tope.<br>");
-    p += sprintf(p, "4. Vuelva a centrar el volante/ruedas y espere a que finalice la cuenta atras.<br>");
+    p += sprintf(p, "4. Vuelva a centrar el volante/ruedas y espere a que finalice la cuenta atrás.<br>");
     p += sprintf(p, "5. Una vez finalizada este proceso, apague el coche y vuelva a encenderlo<br>");
     p += sprintf(p, "</div>");
     p += sprintf(p, "<div id='messageListContainer'><ul id='messageList'>");
@@ -208,7 +282,8 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "              .then(response => response.text())");
     p += sprintf(p, "              .then(data => {");
     p += sprintf(p, "                console.log(data);");
-    p += sprintf(p, "                document.getElementById('status').innerHTML = '<p>Calibration complete</p>';");
+    p += sprintf(p, "                document.getElementById('calibrationStatus').innerHTML = 'Calibración completa';");
+    p += sprintf(p, "                document.getElementById('calibrationStatus').style.display = 'inline-block';");
     p += sprintf(p, "              });");
     p += sprintf(p, "          }");
     p += sprintf(p, "        }, 1000);");
@@ -218,10 +293,10 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "function updateButton() {");
     p += sprintf(p, "  var btn = document.getElementById('countdownBtn');");
     p += sprintf(p, "  if (countdownActive) {");
-    p += sprintf(p, "    btn.innerHTML = 'Countdown: ' + countdown + 's';");
+    p += sprintf(p, "    btn.innerHTML = 'Calibrando: ' + countdown + 's';"); 
     p += sprintf(p, "    btn.disabled = true;");
     p += sprintf(p, "  } else {");
-    p += sprintf(p, "    btn.innerHTML = 'Start Countdown';");
+    p += sprintf(p, "    btn.innerHTML = 'Calibrar ángulo de volante';"); 
     p += sprintf(p, "    btn.disabled = false;");
     p += sprintf(p, "  }");
     p += sprintf(p, "}");
@@ -230,7 +305,6 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "    .then(response => response.text())");
     p += sprintf(p, "    .then(data => {");
     p += sprintf(p, "      console.log(data);");
-    p += sprintf(p, "      document.getElementById('status').innerHTML = '<p>Status check messages sent</p>';");
     p += sprintf(p, "    });");
     p += sprintf(p, "}");
     p += sprintf(p, "function updateMessages() {");
@@ -244,6 +318,7 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "</script>");
     p += sprintf(p, "</body></html>");
 
+    httpd_resp_set_type(req, "text/html; charset=UTF-8");
     httpd_resp_send(req, response, strlen(response));
     free(response);
     return ESP_OK;
@@ -270,8 +345,7 @@ esp_err_t start_countdown_handler(httpd_req_t *req) {
 }
 
 esp_err_t calibrate_handler(httpd_req_t *req) {
-    send_twai_messages(angle_config_messages, sizeof(angle_config_messages) / sizeof(angle_config_messages[0]));
-    httpd_resp_sendstr(req, "Calibration messages sent");
+    httpd_resp_sendstr(req, "Calibration complete");
     return ESP_OK;
 }
 
@@ -349,7 +423,7 @@ void app_main() {
 
     ESP_LOGI(TAG, "TWAI driver installed and started");
 
-    xTaskCreate(twai_receive_task, "TWAI_receive_task", 2048, NULL, 5, NULL);
+    xTaskCreate(twai_receive_task, "TWAI_receive_task", 4096, NULL, TWAI_RX_TASK_PRIO, NULL);
 
     if (!timer_created) {
         esp_timer_create_args_t timer_args = {
