@@ -173,7 +173,7 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "4. Vuelva a centrar el volante/ruedas y espere a que finalice la cuenta atras.<br>");
     p += sprintf(p, "5. Una vez finalizada este proceso, apague el coche y vuelva a encenderlo<br>");
     p += sprintf(p, "</div>");
-    p += sprintf(p, "<h2>Filtered 0x762 Messages (byte0=0x23, byte1=0x00)</h2><div id='messageListContainer'><ul id='messageList'>");
+    p += sprintf(p, "<div id='messageListContainer'><ul id='messageList'>");
 
     for (int i = 0; i < stored_message_count; i++) {
         p += sprintf(p, "<li>ID: 0x762, Data: ");

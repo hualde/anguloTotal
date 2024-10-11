@@ -69,6 +69,3 @@ Este proyecto interactúa directamente con el sistema de dirección del vehícul
 
 Las contribuciones a este proyecto son bienvenidas. Por favor, haga un fork del repositorio y envíe un pull request con sus cambios propuestos.
 
-## Soporte
-
-Para preguntas o soporte, por favor abra un issue en el repositorio de GitHub.
