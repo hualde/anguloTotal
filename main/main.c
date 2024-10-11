@@ -116,7 +116,7 @@ void twai_receive_task(void *pvParameters) {
                          rx_message.data[0], rx_message.data[1], rx_message.data[2], rx_message.data[3],
                          rx_message.data[4], rx_message.data[5], rx_message.data[6], rx_message.data[7]);
     
-                if ((rx_message.data[3] & 0x0F) == 0x0C) {
+                if (rx_message.data[3] == 0x0C) {
                     current_status = 4;
                     message_with_status.status = "Status 4";
                     ESP_LOGI(TAG, "Status 4 detected");
@@ -239,6 +239,8 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "#instructions { margin-top: 10px; }");
     p += sprintf(p, ".status-box { background-color: #f0f0f0; padding: 10px; border-radius: 5px; display: inline-block; margin-left: 20px; }");
     p += sprintf(p, ".calibration-complete { background-color: #4CAF50; padding: 10px; border-radius: 5px; display: inline-block; margin-left: 20px; color: white; }");
+    p += sprintf(p, ".status-box-3 { background-color: #f0f0f0; color: black; }");
+    p += sprintf(p, ".status-box-4 { background-color: #4CAF50; color: white; }");
     p += sprintf(p, "</style></head><body>");
     p += sprintf(p, "<h1>ESP32-C3 CAN Control Panel</h1>");
     p += sprintf(p, "<div>");
@@ -246,7 +248,6 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "<span id='statusBox' class='status-box' style='display: none;'></span>");
     p  += sprintf(p, "</div>");
     p += sprintf(p, "<br><br>");
-    
     p += sprintf(p, "<div style=\"display: flex; align-items: center;\">");
     p += sprintf(p, "<button id='countdownBtn' class='button' onclick='startCountdown()'>Calibrar ángulo de volante</button>"); 
     p += sprintf(p, "<span id='calibrationStatus' class='calibration-complete' style='display: none;'>Calibración completa</span>");
@@ -318,6 +319,7 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "      console.log(data);");
     p += sprintf(p, "      var statusBox = document.getElementById('statusBox');");
     p += sprintf(p, "      statusBox.innerHTML = 'Status ' + data.status;");
+    p += sprintf(p, "      statusBox.className = 'status-box status-box-' + data.status;");
     p += sprintf(p, "      statusBox.style.display = 'inline-block';");
     p += sprintf(p, "    });");
     p += sprintf(p, "}");
@@ -368,6 +370,11 @@ esp_err_t status_check_handler(httpd_req_t *req) {
     
     // Wait for a short period to allow for message processing
     vTaskDelay(pdMS_TO_TICKS(500));
+    
+    // Ensure current_status is always 3 or 4
+    if (current_status != 3 && current_status != 4) {
+        current_status = 3;
+    }
     
     char response[32];
     snprintf(response, sizeof(response), "{\"status\": %d}", current_status);
