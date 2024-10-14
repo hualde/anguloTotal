@@ -244,7 +244,7 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "</style></head><body>");
     p += sprintf(p, "<h1>ESP32-C3 CAN Control Panel</h1>");
     p += sprintf(p, "<div>");
-    p += sprintf(p, "<button class='button' onclick='sendStatusCheck()'>Comprobar estado de la configuración de ángulo de volante</button>");
+    p += sprintf(p, "<button class='button' onclick='sendStatusCheck()'>Comprobar configuración de ángulo de volante</button>");
     p += sprintf(p, "<span id='statusBox' class='status-box' style='display: none;'></span>");
     p  += sprintf(p, "</div>");
     p += sprintf(p, "<br><br>");
@@ -312,7 +312,11 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "    btn.disabled = false;");
     p += sprintf(p, "  }");
     p += sprintf(p, "}");
+    // Modifica la función JavaScript sendStatusCheck()
     p += sprintf(p, "function sendStatusCheck() {");
+    p += sprintf(p, "  var btn = document.querySelector('button');");
+    p += sprintf(p, "  btn.innerHTML = 'Comprobando...';");
+    p += sprintf(p, "  btn.disabled = true;");
     p += sprintf(p, "  fetch('/status_check', { method: 'POST' })");
     p += sprintf(p, "    .then(response => response.json())");
     p += sprintf(p, "    .then(data => {");
@@ -321,6 +325,10 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "      statusBox.innerHTML = 'Status ' + data.status;");
     p += sprintf(p, "      statusBox.className = 'status-box status-box-' + data.status;");
     p += sprintf(p, "      statusBox.style.display = 'inline-block';");
+    p += sprintf(p, "    })");
+    p += sprintf(p, "    .finally(() => {");
+    p += sprintf(p, "      btn.innerHTML = 'Comprobar configuración de ángulo de volante';");
+    p += sprintf(p, "      btn.disabled = false;");
     p += sprintf(p, "    });");
     p += sprintf(p, "}");
     p += sprintf(p, "function updateMessages() {");
