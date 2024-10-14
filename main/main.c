@@ -259,7 +259,7 @@ esp_err_t get_handler(httpd_req_t *req) {
     p += sprintf(p, "4. Vuelva a centrar el volante/ruedas y espere a que finalice la cuenta atrás.<br>");
     p += sprintf(p, "5. Una vez finalizada este proceso, apague el coche y vuelva a encenderlo<br>");
     p += sprintf(p, "</div>");
-    p += sprintf(p, "<div id='messageListContainer'><ul id='messageList'>");
+    
 
     for (int i = 0; i < stored_message_count; i++) {
         p += sprintf(p, "<li>ID: 0x762, Data: ");
