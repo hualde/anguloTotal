@@ -19,11 +19,11 @@
 #define WIFI_SSID "ESP32_AP"
 #define WIFI_PASS ""
 
-#define MAX_STORED_MESSAGES 20
+#define MAX_STORED_MESSAGES 20 //20
 
 #define TWAI_TX_TASK_PRIO 9
 #define TWAI_RX_TASK_PRIO 8
-#define EXAMPLE_DELAY_BETWEEN_MSGS_MS 100
+#define EXAMPLE_DELAY_BETWEEN_MSGS_MS 500 //100
 #define MAX_RETRIES 3
 
 static const char *TAG = "TWAI_APP";
@@ -116,14 +116,14 @@ void twai_receive_task(void *pvParameters) {
                          rx_message.data[0], rx_message.data[1], rx_message.data[2], rx_message.data[3],
                          rx_message.data[4], rx_message.data[5], rx_message.data[6], rx_message.data[7]);
     
-                if (rx_message.data[3] == 0x0C) {
+                if ((rx_message.data[3] & 0x0F) == 0x0C) {
                     current_status = 4;
                     message_with_status.status = "Status 4";
-                    ESP_LOGI(TAG, "Status 4 detected");
+                    ESP_LOGI(TAG, "Status 4 detected (0x%02X)", rx_message.data[3]);
                 } else {
                     current_status = 3;
                     message_with_status.status = "Status 3";
-                    ESP_LOGI(TAG, "Status 3 detected");
+                    ESP_LOGI(TAG, "Status 3 detected (0x%02X)", rx_message.data[3]);
                 }
     
                 message_with_status.message = rx_message;
@@ -366,20 +366,29 @@ esp_err_t calibrate_handler(httpd_req_t *req) {
 }
 
 esp_err_t status_check_handler(httpd_req_t *req) {
+    // Reset the current status before sending messages
+    current_status = 0;
+
+    // Send the status check messages
     send_twai_messages(status_check_messages, sizeof(status_check_messages) / sizeof(status_check_messages[0]));
     
-    // Wait for a short period to allow for message processing
-    vTaskDelay(pdMS_TO_TICKS(500));
+    // Wait for a longer period to allow for message processing and response
+    vTaskDelay(pdMS_TO_TICKS(1000));  // Increased from 500 to 1000 ms
     
-    // Ensure current_status is always 3 or 4
+    // If no status was received, set it to 3 as a default
     if (current_status != 3 && current_status != 4) {
         current_status = 3;
     }
     
+    // Prepare and send the response
     char response[32];
     snprintf(response, sizeof(response), "{\"status\": %d}", current_status);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, response, strlen(response));
+
+    // Log the status for debugging
+    ESP_LOGI(TAG, "Status check completed. Current status: %d", current_status);
+
     return ESP_OK;
 }
 
