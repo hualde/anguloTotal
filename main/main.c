@@ -55,7 +55,7 @@ twai_message_t status_check_messages[] = {
 };
 
 static esp_timer_handle_t countdown_timer;
-static int countdown_value = 30;
+static int countdown_value = 10;
 static bool countdown_active = false;
 static bool timer_created = false;
 static int current_status = 3; // 3: Status 3, 4: Status 4
@@ -271,13 +271,13 @@ esp_err_t get_handler(httpd_req_t *req) {
 
     p += sprintf(p, "</ul></div>");
     p += sprintf(p, "<script>");
-    p += sprintf(p, "var countdown = 30;");
+    p += sprintf(p, "var countdown = 10;");
     p += sprintf(p, "var countdownActive = false;");
     p += sprintf(p, "var countdownInterval;");
     p += sprintf(p, "function startCountdown() {");
     p += sprintf(p, "  if (!countdownActive) {");
     p += sprintf(p, "    countdownActive = true;");
-    p += sprintf(p, "    countdown = 30;");
+    p += sprintf(p, "    countdown = 10;");
     p += sprintf(p, "    document.getElementById('instructions').style.display = 'block';");
     p += sprintf(p, "    updateButton();");
     p += sprintf(p, "    fetch('/start_countdown', { method: 'POST' })");
@@ -346,7 +346,7 @@ esp_err_t start_countdown_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
     
-    countdown_value = 30;
+    countdown_value = 10;
     countdown_active = true;
     esp_err_t err = esp_timer_start_periodic(countdown_timer, 1000000); // 1 second interval
     if (err != ESP_OK) {
